@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ISS Live Tracker - TFB2093 IoT Project</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/SVRKdeZBPG+S8yow7EP7Rjly2Yg/2k31b8q+5R"
+          crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20n6a49oK68X6K63m3a4/p79Lz2f+o4P1B9hK/1B"
+            crossorigin=""></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; }
+        #map { height: 500px; width: 100%; }
+        .dashboard { display: flex; flex-wrap: wrap; padding: 15px; gap: 15px; }
+        .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); flex: 1 1 200px; }
+        .card h3 { margin-top: 0; color: #007bff; }
+        .live-data { font-size: 1.2em; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h1 style="text-align: center; padding: 10px; background-color: #333; color: white; margin-bottom: 0;">🛰️ ISS Live Telemetry Dashboard</h1>
+    
+    <div id="map"></div>
+
+    <div class="dashboard">
+        <div class="card">
+            <h3>Current Location</h3>
+            <p>Latitude: <span id="current-lat" class="live-data">--</span></p>
+            <p>Longitude: <span id="current-lon" class="live-data">--</span></p>
+            <p>Altitude: <span id="current-alt" class="live-data">--</span> km</p>
+        </div>
+        <div class="card">
+            <h3>Real-Time Data</h3>
+            <p>Velocity: <span id="current-vel" class="live-data">--</span> km/h</p>
+            <p>Time (UTC): <span id="current-time" class="live-data">--</span></p>
+            <p>Altitude Change (1hr): <span id="alt-change" class="live-data">--</span> km</p>
+        </div>
+        <div class="card">
+            <h3>3-Day Analytics</h3>
+            <p>Max Longitude: <span id="max-lon" class="live-data">--</span></p>
+            <p>Min Longitude: <span id="min-lon" class="live-data">--</span></p>
+            <p>Max Altitude: <span id="max-alt" class="live-data">--</span> km</p>
+            <p>Min Altitude: <span id="min-alt" class="live-data">--</span> km</p>
+        </div>
+    </div>
+    
+    <div style="padding: 15px;">
+        <h2>Altitude History (Chart Placeholder)</h2>
+        <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <p>*** Placeholder for a Chart.js or Plotly.js graph showing Altitude vs. Time. ***</p>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. Map Initialization ---
+        const map = L.map('map').setView([0, 0], 2);
+        
+        // Add a tile layer (OpenStreetMap)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // Custom icon for the ISS
+        const issIcon = L.icon({
+            iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d0/International_Space_Station_%28ISS%29.svg/100px-International_Space_Station_%28ISS%29.svg.png',
+            iconSize: [50, 32], // size of the icon
+            iconAnchor: [25, 16], // point of the icon which will correspond to marker's location
+        });
+
+        let issMarker = L.marker([0, 0], {icon: issIcon}).addTo(map);
+        let pathLine = L.polyline([], {color: 'red'}).addTo(map);
+
+        // --- 2. Data Fetching and Updating Functions ---
+        
+        // Function to fetch and draw the historical path (runs once or less often)
+        async function updatePath() {
+            const response = await fetch('/api/path_history');
+            const data = await response.json();
+            
+            // Update the Polyline layer
+            pathLine.setLatLngs(data.path);
+            console.log(`Path updated with ${data.path.length} points.`);
+        }
+
+        // Function to fetch and update real-time data and analytics (runs every few seconds)
+        async function updateDashboard() {
+            const response = await fetch('/api/realtime_data');
+            const data = await response.json();
+            
+            const iss = data.iss;
+            const analytics = data.analytics;
+
+            if (iss.latitude && iss.longitude) {
+                const lat = iss.latitude;
+                const lon = iss.longitude;
+                
+                // Update Marker Position and Map View
+                const newLatLng = new L.LatLng(lat, lon);
+                issMarker.setLatLng(newLatLng);
+                // Optionally move map to new location for a few seconds every update
+                // map.setView(newLatLng, map.getZoom()); 
+
+                // Update Real-time Metrics
+                document.getElementById('current-lat').textContent = lat.toFixed(4);
+                document.getElementById('current-lon').textContent = lon.toFixed(4);
+                document.getElementById('current-alt').textContent = iss.altitude ? iss.altitude.toFixed(2) : '--';
+                document.getElementById('current-vel').textContent = iss.velocity ? iss.velocity.toFixed(2) : '--';
+                
+                const date = new Date(iss.timestamp_utc * 1000);
+                document.getElementById('current-time').textContent = date.toLocaleTimeString('en-US', { hour12: false });
+            }
+            
+            // Update Analytics Metrics
+            document.getElementById('max-lon').textContent = analytics.max_lon ? analytics.max_lon.toFixed(4) : '--';
+            document.getElementById('min-lon').textContent = analytics.min_lon ? analytics.min_lon.toFixed(4) : '--';
+            document.getElementById('max-alt').textContent = analytics.max_alt ? analytics.max_alt.toFixed(2) : '--';
+            document.getElementById('min-alt').textContent = analytics.min_alt ? analytics.min_alt.toFixed(2) : '--';
+            document.getElementById('alt-change').textContent = analytics.altitude_change_km || '--';
+        }
+
+        // --- 3. Run Logic ---
+        updatePath(); // Initial path load
+        updateDashboard(); // Initial data load
+
+        // Set intervals for updates
+        setInterval(updateDashboard, 5000); // Update position and analytics every 5 seconds
+        // setInterval(updatePath, 600000); // Optionally update path every 10 minutes (less frequent)
+
+    </script>
+    
+</body>
+</html>
